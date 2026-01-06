@@ -7,6 +7,9 @@ use crate::td_stretch::TDStretch;
 use crate::types::{Sample, SettingId, float_equal};
 use crate::error::{Result, SoundTouchError};
 
+const VERSION: &str = "2.4.0-rs";
+const VERSION_ID: u32 = 20400;
+
 /// Main SoundTouch processor
 pub struct SoundTouch {
     /// Rate transposer
@@ -61,12 +64,12 @@ impl SoundTouch {
 
     /// Get version string
     pub fn version() -> &'static str {
-        crate::VERSION
+        VERSION
     }
 
     /// Get version ID
     pub fn version_id() -> u32 {
-        crate::VERSION_ID
+        VERSION_ID
     }
 
     /// Set number of channels

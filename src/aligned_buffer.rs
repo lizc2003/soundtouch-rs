@@ -7,7 +7,7 @@ use std::alloc::{alloc, dealloc, Layout};
 use std::ptr::NonNull;
 use std::slice;
 
-pub const ALIGN_BYTES: usize = 16;
+const ALIGN_BYTES: usize = 16;
 
 /// 16-byte aligned sample buffer for SIMD optimization
 pub struct AlignedSampleVec {

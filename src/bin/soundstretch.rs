@@ -3,7 +3,7 @@
 //! Compatible with original C++ soundstretch parameter format
 
 use hound::{WavReader, WavWriter, WavSpec};
-use soundtouch::SoundTouch;
+use soundtouch::soundtouch::SoundTouch;
 use soundtouch::bpm_detect::BPMDetect;
 use std::env;
 use std::path::PathBuf;

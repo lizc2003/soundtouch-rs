@@ -1,6 +1,6 @@
 //! Integration tests for SoundTouch
 
-use soundtouch::SoundTouch;
+use soundtouch::soundtouch::SoundTouch;
 
 #[test]
 fn test_basic_processing() {
