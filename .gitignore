@@ -1,7 +1,21 @@
+# Build artifacts
 /target/
 Cargo.lock
+
+# Audio files (except test samples if needed)
 *.wav
+
+# Editor files
 *.swp
 *.swo
 *~
+.idea/
+.vscode/
+*.iml
+
+# OS files
 .DS_Store
+Thumbs.db
+
+# Rust analyzer
+rust-project.json

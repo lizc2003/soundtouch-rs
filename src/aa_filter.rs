@@ -64,10 +64,10 @@ impl AAFilter {
 
     /// Calculate FIR coefficients for low-pass filter using Hamming window
     fn calculate_coeffs(&mut self) -> Result<()> {
-        assert!(self.length >= 2);
-        assert!(self.length % 4 == 0);
-        assert!(self.cutoff_freq >= 0.0);
-        assert!(self.cutoff_freq <= 0.5);
+        debug_assert!(self.length >= 2);
+        debug_assert!(self.length.is_multiple_of(4));
+        debug_assert!(self.cutoff_freq >= 0.0);
+        debug_assert!(self.cutoff_freq <= 0.5);
 
         let wc = 2.0 * PI * self.cutoff_freq;
         let temp_coeff = TWOPI / self.length as f64;
@@ -96,16 +96,16 @@ impl AAFilter {
         }
 
         // Ensure valid filter design
-        assert!(sum > 0.0, "Sum of coefficients must be positive");
-        assert!(work[self.length / 2] > 0.0, "Filter center tap must be positive");
+        debug_assert!(sum > 0.0, "Sum of coefficients must be positive");
+        debug_assert!(work[self.length / 2] > 0.0, "Filter center tap must be positive");
 
         // Calculate scaling coefficient to normalize to 16384
         // This allows using integer division by 2^14 = 16384
         let scale_coeff = 16384.0 / sum;
 
         let mut coeffs: Vec<Sample> = Vec::with_capacity(self.length);
-        for i in 0..self.length {
-            let temp = work[i] * scale_coeff;
+        for work_val in work.iter().take(self.length) {
+            let temp = work_val * scale_coeff;
             // Round to nearest
             let rounded = if temp >= 0.0 {
                 temp + 0.5
@@ -114,7 +114,7 @@ impl AAFilter {
             };
             
             // Ensure no overflows (should fit in i16 range)
-            assert!(rounded >= -32768.0 && rounded <= 32767.0);
+            debug_assert!(rounded >= -32768.0 && rounded <= 32767.0);
             coeffs.push(rounded as Sample);
         }
 
@@ -134,7 +134,6 @@ impl AAFilter {
     //pub fn evaluate(&self, dest: &mut [Sample], src: &[Sample], num_samples: usize, num_channels: usize) -> usize {
     //    self.fir.evaluate(dest, src, num_samples, num_channels)
     //}
-
     /// Apply filter to FIFO buffers
     ///
     /// Processes samples from src buffer and adds results to dest buffer.
@@ -144,7 +143,7 @@ impl AAFilter {
     /// Number of samples processed
     pub fn evaluate_fifo(&self, dest: &mut FIFOSampleBuffer, src: &mut FIFOSampleBuffer) -> usize {
         let num_channels = src.get_channels();
-        assert_eq!(num_channels, dest.get_channels());
+        debug_assert_eq!(num_channels, dest.get_channels());
 
         let num_src_samples = src.num_samples();
         if num_src_samples == 0 {

@@ -1,10 +1,15 @@
 [package]
 name = "soundtouch-rs"
 version = "2.4.0"
-edition = "2024"
+edition = "2021"
+rust-version = "1.70"
 license = "LGPL-2.1"
 authors = ["lizc"]
 description = "SoundTouch audio processing library in Rust - pitch/tempo/rate adjustment"
+repository = "https://github.com/lizc2003/soundtouch-rs"
+readme = "README.md"
+keywords = ["audio", "soundtouch", "pitch", "tempo", "dsp"]
+categories = ["multimedia::audio", "algorithms"]
 
 [lib]
 name = "soundtouch"
@@ -20,3 +25,10 @@ thiserror = "2.0"
 
 [dev-dependencies]
 
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+
+[profile.bench]
+inherits = "release"

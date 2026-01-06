@@ -42,7 +42,7 @@ impl FIRFilter {
             return Err(SoundTouchError::InvalidParameter("Filter length must be > 0".to_string()));
         }
         
-        if new_length % 8 != 0 {
+        if !new_length.is_multiple_of(8) {
             return Err(SoundTouchError::InvalidParameter("FIR filter length not divisible by 8".to_string()));
         }
 
@@ -57,8 +57,8 @@ impl FIRFilter {
         self.filter_coeffs = Vec::with_capacity(self.length);
         self.filter_coeffs_stereo = Vec::with_capacity(self.length * 2);
 
-        for i in 0..self.length {
-            let scaled_coeff = coeffs[i] * scale;
+        for coeff in coeffs.iter().take(self.length) {
+            let scaled_coeff = coeff * scale;
             self.filter_coeffs.push(scaled_coeff);
             
             // Create stereo set of filter coefficients for better vectorization
@@ -156,9 +156,7 @@ impl FIRFilter {
                 }
             }
 
-            for c in 0..num_channels {
-                dest[j + c] = sums[c];
-            }
+            dest[j..(j + num_channels)].copy_from_slice(&sums[..num_channels]);
         }
 
         num_samples - ilength

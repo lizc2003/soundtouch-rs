@@ -130,7 +130,7 @@ impl SoundTouch {
 
     /// Set pitch change in octaves compared to the original pitch (-1.00 .. +1.00)
     pub fn set_pitch_octaves(&mut self, new_pitch: f64) {
-        self.virtual_pitch = (0.69314718056 * new_pitch).exp();
+        self.virtual_pitch = (std::f64::consts::LN_2 * new_pitch).exp();
         self.calc_effective_rate_and_tempo();
     }
 
@@ -221,7 +221,6 @@ impl SoundTouch {
     /// Internal put_samples implementation
     //fn put_samples_internal(&mut self, samples: &[Sample], num_samples: usize) {
     //}
-
     /// Get number of unprocessed samples
     pub fn num_unprocessed_samples(&self) -> usize {
         self.td_stretch.get_unmut_input().num_samples()

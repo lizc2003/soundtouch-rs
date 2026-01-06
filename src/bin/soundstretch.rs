@@ -45,11 +45,9 @@ fn parse_args() -> Result<Options, String> {
     let mut opts = Options::new();
     
     if args.len() < 3 {
-        if args.len() == 2 {
-            if args[1].starts_with("-l") {
-                opts.show_license = true;
-                return Ok(opts);
-            }
+        if args.len() == 2 && args[1].starts_with("-l") {
+            opts.show_license = true;
+            return Ok(opts);
         }
         return Err("Too few parameters".to_string());
     }

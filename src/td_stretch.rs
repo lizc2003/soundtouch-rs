@@ -262,7 +262,7 @@ impl TDStretch {
 
     /// Clear mid buffer
     fn clear_mid_buffer(&mut self) {
-        if self.mid_buffer.len() > 0 {
+        if !self.mid_buffer.is_empty() {
             unsafe {
                 std::ptr::write_bytes(
                     self.mid_buffer.as_mut_ptr(),
