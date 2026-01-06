@@ -1,0 +1,22 @@
+[package]
+name = "soundtouch-rs"
+version = "2.4.0"
+edition = "2024"
+license = "LGPL-2.1"
+authors = ["lizc"]
+description = "SoundTouch audio processing library in Rust - pitch/tempo/rate adjustment"
+
+[lib]
+name = "soundtouch"
+path = "src/lib.rs"
+
+[[bin]]
+name = "soundstretch"
+path = "src/bin/soundstretch.rs"
+
+[dependencies]
+hound = "3.5"  # WAV file I/O
+thiserror = "2.0"
+
+[dev-dependencies]
+
