@@ -26,10 +26,10 @@
 //! ```
 
 pub mod types;
+pub mod error;
 pub mod fifo_buffer;
 pub mod soundtouch;
 pub mod bpm_detect;
-pub mod error;
 
 mod aligned_buffer;
 mod fifo_pipe;

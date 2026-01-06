@@ -93,8 +93,6 @@ The library consists of several key components:
 
 - **SoundTouch**: Main processor class that coordinates the pipeline
 - **FIFOSampleBuffer**: FIFO buffer for sample management
-- **TDStretch**: Time-domain stretcher for tempo changes
-- **RateTransposer**: Rate transposer for pitch changes
 - **BPMDetect**: BPM detection using autocorrelation
 
 ## Testing

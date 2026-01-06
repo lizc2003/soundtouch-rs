@@ -3,7 +3,6 @@
 //! Transposes sample rate by interpolation to change both tempo and pitch
 
 use crate::fifo_buffer::FIFOSampleBuffer;
-use crate::fifo_pipe::FIFOSamplePipe;
 use crate::aa_filter::AAFilter;
 use crate::interpolate::{Interpolator, InterpolationAlgorithm, create_interpolator};
 use crate::error::{Result, SoundTouchError};
@@ -201,6 +200,7 @@ impl RateTransposer {
     }    
 }
 
+/*
 // Implement FIFOSamplePipe trait (for generic usage)
 impl FIFOSamplePipe for RateTransposer {
     fn put_samples(&mut self, samples: &[Sample], num_samples: usize) {
@@ -227,6 +227,7 @@ impl FIFOSamplePipe for RateTransposer {
         self.adjust_amount_of_samples(num_samples)
     }
 }
+*/
 
 impl Default for RateTransposer {
     fn default() -> Self {

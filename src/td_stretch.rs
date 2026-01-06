@@ -3,7 +3,6 @@
 //! Stretches audio tempo without changing pitch using time-domain algorithm
 
 use crate::fifo_buffer::FIFOSampleBuffer;
-use crate::fifo_pipe::FIFOSamplePipe;
 use crate::error::{Result, SoundTouchError};
 use crate::types::{Sample, MAX_CHANNELS};
 use crate::aligned_buffer::AlignedSampleVec;
@@ -632,6 +631,7 @@ impl TDStretch {
     }
 }
 
+/*
 // Implement FIFOSamplePipe trait (for generic usage)
 impl FIFOSamplePipe for TDStretch {
     fn put_samples(&mut self, samples: &[Sample], num_samples: usize) {
@@ -658,6 +658,7 @@ impl FIFOSamplePipe for TDStretch {
         self.adjust_amount_of_samples(num_samples)
     }
 }
+*/
 
 impl Default for TDStretch {
     fn default() -> Self {
