@@ -21,6 +21,7 @@ pub struct AlignedSampleVec {
     length: usize,
 }
 
+#[allow(dead_code)]
 impl AlignedSampleVec {
     /// Create a new aligned sample vector with given capacity
     pub fn new(capacity: usize) -> Self {

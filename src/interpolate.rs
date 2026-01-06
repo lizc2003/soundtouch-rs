@@ -7,6 +7,7 @@ use crate::fifo_buffer::FIFOSampleBuffer;
 
 /// Interpolation algorithm types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum InterpolationAlgorithm {
     /// Linear interpolation (fast, lower quality)
     Linear,

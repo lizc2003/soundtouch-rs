@@ -27,6 +27,7 @@ pub struct RateTransposer {
     aa_filter_enabled: bool,
 }
 
+#[allow(dead_code)]
 impl RateTransposer {
     /// Create new rate transposer with default cubic interpolation
     pub fn new() -> Self {

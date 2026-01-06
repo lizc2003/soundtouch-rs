@@ -11,6 +11,7 @@ use crate::types::Sample;
 /// Abstract base trait for FIFO (first-in-first-out) sample processing.
 /// 
 /// Equivalent to C++ `FIFOSamplePipe` abstract base class.
+#[allow(dead_code)]
 pub trait FIFOSamplePipe {
     /// Add samples to the pipe
     fn put_samples(&mut self, samples: &[Sample], num_samples: usize);

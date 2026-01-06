@@ -131,9 +131,9 @@ impl AAFilter {
     ///
     /// # Returns
     /// Number of samples written to dest
-    pub fn evaluate(&self, dest: &mut [Sample], src: &[Sample], num_samples: usize, num_channels: usize) -> usize {
-        self.fir.evaluate(dest, src, num_samples, num_channels)
-    }
+    //pub fn evaluate(&self, dest: &mut [Sample], src: &[Sample], num_samples: usize, num_channels: usize) -> usize {
+    //    self.fir.evaluate(dest, src, num_samples, num_channels)
+    //}
 
     /// Apply filter to FIFO buffers
     ///
@@ -206,17 +206,6 @@ mod tests {
         // Test lower bound
         filter.set_cutoff_freq(-0.1);
         assert_eq!(filter.cutoff_freq, 0.0);
-    }
-
-    #[test]
-    fn test_evaluate() {
-        let filter = AAFilter::new(32);
-        let src = vec![1.0; 128];
-        let mut dest = vec![0.0; 128];
-
-        let result = filter.evaluate(&mut dest, &src, 64, 2);
-        assert!(result > 0);
-        assert!(result < 64); // Output is smaller due to filter length
     }
 
     #[test]
