@@ -81,11 +81,8 @@ impl FIRFilter {
     ///
     /// # Returns
     /// Number of samples copied to dest
+    #[inline(always)]
     pub fn evaluate(&self, dest: &mut [Sample], src: &[Sample], num_samples: usize, num_channels: usize) -> usize {
-        if self.length == 0 {
-            return 0;
-        }
-
         if num_samples < self.length {
             return 0;
         }

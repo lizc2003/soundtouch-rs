@@ -141,12 +141,21 @@ impl AAFilter {
     ///
     /// # Returns
     /// Number of samples processed
+    /// 
+    /// Optimized with inline and direct buffer access to reduce overhead
+    #[inline(always)]
     pub fn evaluate_fifo(&self, dest: &mut FIFOSampleBuffer, src: &mut FIFOSampleBuffer) -> usize {
         let num_channels = src.get_channels();
         debug_assert_eq!(num_channels, dest.get_channels());
 
         let num_src_samples = src.num_samples();
         if num_src_samples == 0 {
+            return 0;
+        }
+
+        // Early return if not enough samples for filtering
+        let filter_len = self.fir.get_length();
+        if num_src_samples < filter_len {
             return 0;
         }
 

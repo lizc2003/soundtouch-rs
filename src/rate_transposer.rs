@@ -118,6 +118,7 @@ impl RateTransposer {
     }
 
     /// Put samples to input (public method)
+    #[inline]
     pub fn put_samples(&mut self, samples: &[Sample], num_samples: usize) {
         self.input_buffer.put_samples(samples, num_samples);
         if self.input_buffer.num_samples() == 0 {

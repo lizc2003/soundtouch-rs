@@ -61,12 +61,15 @@ impl FIFOSampleBuffer {
         self.samples_in_buffer += num_samples;
     }
 
+    /// Increase sample count without copying (for direct buffer writes)
+    #[inline(always)]
     pub fn put_samples_no_copy(&mut self, num_samples: usize) {
         self.ensure_capacity(self.samples_in_buffer + num_samples);
         self.samples_in_buffer += num_samples;
     }
 
     /// Receive samples from the buffer
+    #[inline]
     pub fn receive_samples(&mut self, output: &mut [Sample], max_samples: usize) -> usize {
         let num = max_samples.min(self.samples_in_buffer);
         if num == 0 {
@@ -91,6 +94,7 @@ impl FIFOSampleBuffer {
     }
 
     /// Remove samples from beginning without copying
+    #[inline(always)]
     pub fn receive_samples_no_copy(&mut self, max_samples: usize) -> usize {
         let num = max_samples.min(self.samples_in_buffer);
         self.samples_in_buffer -= num;
@@ -109,16 +113,19 @@ impl FIFOSampleBuffer {
     }
 
     /// Get number of samples currently in buffer
+    #[inline(always)]
     pub fn num_samples(&self) -> usize {
         self.samples_in_buffer
     }
 
     /// Check if buffer is empty
+    #[inline(always)]
     pub fn is_empty(&self) -> bool {
         self.samples_in_buffer == 0
     }
 
     /// Clear all samples from buffer
+    #[inline]
     pub fn clear(&mut self) {
         self.samples_in_buffer = 0;
         self.buffer_pos = 0;
@@ -138,11 +145,13 @@ impl FIFOSampleBuffer {
     }
 
     /// Get number of channels
+    #[inline(always)]
     pub fn get_channels(&self) -> usize {
         self.channels
     }
 
     /// Get pointer to beginning of samples
+    #[inline(always)]
     pub fn ptr_begin(&self) -> &[Sample] {
         if self.samples_in_buffer == 0 {
             return &[];
@@ -156,6 +165,8 @@ impl FIFOSampleBuffer {
         }
     }
 
+    /// Get pointer to end of buffer for writing
+    #[inline(always)]
     pub fn ptr_end(&mut self, slack_capacity: usize) -> &mut [Sample] {
         self.ensure_capacity(self.samples_in_buffer + slack_capacity);
 
