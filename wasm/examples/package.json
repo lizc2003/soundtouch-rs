@@ -1,0 +1,20 @@
+{
+  "name": "soundtouch-wasm-examples",
+  "version": "1.0.0",
+  "description": "Examples for SoundTouch WASM bindings",
+  "main": "node-example.js",
+  "scripts": {
+    "example": "node node-example.js",
+    "serve": "python3 -m http.server 8000"
+  },
+  "keywords": [
+    "soundtouch",
+    "wasm",
+    "audio",
+    "pitch",
+    "tempo"
+  ],
+  "author": "",
+  "license": "LGPL-2.1"
+}
+

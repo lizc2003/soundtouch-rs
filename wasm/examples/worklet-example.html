@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SoundTouch AudioWorklet Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+        }
+        .control {
+            margin: 20px 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="range"] {
+            width: 100%;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        #status {
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎵 SoundTouch AudioWorklet Demo</h1>
+        
+        <div class="warning">
+            <strong>⚠️ Note:</strong> This example demonstrates real-time audio processing 
+            using AudioWorklet. For this to work properly, you need to:
+            <ul>
+                <li>Build the WASM module for web target</li>
+                <li>Serve this page over HTTP/HTTPS (not file://)</li>
+                <li>Have the worklet processor script in the same directory</li>
+            </ul>
+        </div>
+
+        <div class="control">
+            <label for="audioSource">Audio Source:</label>
+            <select id="audioSource">
+                <option value="oscillator">Oscillator (440 Hz)</option>
+                <option value="microphone">Microphone</option>
+                <option value="file">Audio File</option>
+            </select>
+            <input type="file" id="audioFile" accept="audio/*" style="display:none;">
+        </div>
+
+        <div class="control">
+            <label for="tempo">Tempo: <span id="tempoValue">1.00x</span></label>
+            <input type="range" id="tempo" min="0.5" max="2.0" step="0.01" value="1.0">
+        </div>
+
+        <div class="control">
+            <label for="pitch">Pitch: <span id="pitchValue">0 semitones</span></label>
+            <input type="range" id="pitch" min="-12" max="12" step="0.1" value="0">
+        </div>
+
+        <div class="control">
+            <button id="startBtn">Start Processing</button>
+            <button id="stopBtn" disabled>Stop Processing</button>
+        </div>
+
+        <div id="status">Ready. Select an audio source and click Start.</div>
+    </div>
+
+    <script type="module">
+        let audioContext;
+        let sourceNode;
+        let soundtouchNode;
+        let isProcessing = false;
+
+        const audioSourceSelect = document.getElementById('audioSource');
+        const audioFileInput = document.getElementById('audioFile');
+        const tempoSlider = document.getElementById('tempo');
+        const pitchSlider = document.getElementById('pitch');
+        const tempoValue = document.getElementById('tempoValue');
+        const pitchValue = document.getElementById('pitchValue');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const status = document.getElementById('status');
+
+        // Update displays
+        tempoSlider.addEventListener('input', () => {
+            const value = parseFloat(tempoSlider.value);
+            tempoValue.textContent = `${value.toFixed(2)}x`;
+            if (soundtouchNode) {
+                soundtouchNode.port.postMessage({
+                    type: 'setTempo',
+                    value: value
+                });
+            }
+        });
+
+        pitchSlider.addEventListener('input', () => {
+            const value = parseFloat(pitchSlider.value);
+            pitchValue.textContent = `${value > 0 ? '+' : ''}${value.toFixed(1)} semitones`;
+            if (soundtouchNode) {
+                soundtouchNode.port.postMessage({
+                    type: 'setPitch',
+                    value: value
+                });
+            }
+        });
+
+        // Show file input when file source is selected
+        audioSourceSelect.addEventListener('change', () => {
+            audioFileInput.style.display = 
+                audioSourceSelect.value === 'file' ? 'block' : 'none';
+        });
+
+        // Start processing
+        startBtn.addEventListener('click', async () => {
+            try {
+                if (!audioContext) {
+                    audioContext = new AudioContext();
+                    
+                    // Load the AudioWorklet processor
+                    await audioContext.audioWorklet.addModule('soundtouch-processor.js');
+                    status.textContent = 'AudioWorklet loaded successfully!';
+                }
+
+                // Create source based on selection
+                const sourceType = audioSourceSelect.value;
+                
+                if (sourceType === 'oscillator') {
+                    sourceNode = audioContext.createOscillator();
+                    sourceNode.frequency.value = 440; // A4
+                    sourceNode.type = 'sine';
+                } else if (sourceType === 'microphone') {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    sourceNode = audioContext.createMediaStreamSource(stream);
+                } else if (sourceType === 'file') {
+                    const file = audioFileInput.files[0];
+                    if (!file) {
+                        status.textContent = 'Please select an audio file first!';
+                        return;
+                    }
+                    const arrayBuffer = await file.arrayBuffer();
+                    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                    sourceNode = audioContext.createBufferSource();
+                    sourceNode.buffer = audioBuffer;
+                    sourceNode.loop = true;
+                }
+
+                // Create SoundTouch worklet node
+                soundtouchNode = new AudioWorkletNode(audioContext, 'soundtouch-processor', {
+                    numberOfInputs: 1,
+                    numberOfOutputs: 1,
+                    processorOptions: {
+                        sampleRate: audioContext.sampleRate,
+                        tempo: parseFloat(tempoSlider.value),
+                        pitch: parseFloat(pitchSlider.value)
+                    }
+                });
+
+                // Connect: source -> soundtouch -> destination
+                sourceNode.connect(soundtouchNode);
+                soundtouchNode.connect(audioContext.destination);
+
+                // Start source
+                if (sourceNode.start) {
+                    sourceNode.start();
+                }
+
+                isProcessing = true;
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                status.textContent = `Processing audio from ${sourceType}...`;
+
+            } catch (err) {
+                status.textContent = `Error: ${err.message}`;
+                console.error(err);
+            }
+        });
+
+        // Stop processing
+        stopBtn.addEventListener('click', () => {
+            if (sourceNode) {
+                if (sourceNode.stop) {
+                    sourceNode.stop();
+                }
+                sourceNode.disconnect();
+                sourceNode = null;
+            }
+            if (soundtouchNode) {
+                soundtouchNode.disconnect();
+                soundtouchNode = null;
+            }
+
+            isProcessing = false;
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            status.textContent = 'Processing stopped.';
+        });
+    </script>
+</body>
+</html>
+

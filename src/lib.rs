@@ -38,3 +38,7 @@ mod aa_filter;
 mod interpolate;
 mod rate_transposer;
 mod td_stretch;
+
+// WASM bindings (enabled with "wasm" feature)
+#[cfg(feature = "wasm")]
+pub mod wasm;

@@ -14,6 +14,7 @@ categories = ["multimedia::audio", "algorithms"]
 [lib]
 name = "soundtouch"
 path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
 
 [[bin]]
 name = "soundstretch"
@@ -22,12 +23,15 @@ path = "src/bin/soundstretch.rs"
 [dependencies]
 hound = "3.5"  # WAV file I/O
 thiserror = "2.0"
+wasm-bindgen = { version = "0.2", optional = true }
+console_error_panic_hook = { version = "0.1", optional = true }
 
 [dev-dependencies]
 
 [features]
 default = ["unsafe-optimizations"]
 unsafe-optimizations = []  # Enable unsafe optimizations for better performance
+wasm = ["wasm-bindgen", "console_error_panic_hook"]  # Enable WASM support
 
 [profile.release]
 opt-level = 3           # Maximum optimization level (matches C++ -O3)
@@ -40,3 +44,6 @@ strip = true            # Strip symbols
 
 [profile.bench]
 inherits = "release"
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-O3", "--enable-bulk-memory", "--fast-math", "--enable-nontrapping-float-to-int"]
