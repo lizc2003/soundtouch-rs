@@ -42,7 +42,7 @@ impl FIRFilter {
             return Err(SoundTouchError::InvalidParameter("Filter length must be > 0".to_string()));
         }
         
-        if !new_length.is_multiple_of(8) {
+        if new_length % 8 != 0 {
             return Err(SoundTouchError::InvalidParameter("FIR filter length not divisible by 8".to_string()));
         }
 
@@ -156,7 +156,9 @@ impl FIRFilter {
                 }
             }
 
-            dest[j..(j + num_channels)].copy_from_slice(&sums[..num_channels]);
+            for c in 0..num_channels {
+                dest[j + c] = sums[c];
+            }
         }
 
         num_samples - ilength
