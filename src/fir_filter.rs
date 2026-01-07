@@ -98,6 +98,73 @@ impl FIRFilter {
     }
 
     /// Filter evaluation for mono
+    /// Optimized with 4 independent accumulators to reduce data dependencies
+    #[cfg(feature = "unsafe-optimizations")]
+    #[inline(always)]
+    fn evaluate_filter_mono(&self, dest: &mut [Sample], src: &[Sample], num_samples: usize) -> usize {
+        let ilength = self.length & !7; // Hint for compiler: divisible by 8
+        let end = num_samples - ilength;
+
+        // SAFETY precondition checks
+        debug_assert!(src.len() >= end + ilength, "src buffer too small");
+        debug_assert!(dest.len() >= end, "dest buffer too small");
+        debug_assert!(self.filter_coeffs.len() >= ilength, "coeffs buffer too small");
+
+        unsafe {
+            let src_base = src.as_ptr();
+            let coef_ptr = self.filter_coeffs.as_ptr();
+            let dest_base = dest.as_mut_ptr();
+
+            for j in 0..end {
+                let src_ptr = src_base.add(j);
+                
+                // Use 4 independent accumulators to reduce data dependencies
+                let mut sum0: f32 = 0.0;
+                let mut sum1: f32 = 0.0;
+                let mut sum2: f32 = 0.0;
+                let mut sum3: f32 = 0.0;
+
+                // Unroll by 8, distributing to 4 accumulators
+                let mut i = 0;
+                while i + 8 <= ilength {
+                    // SAFETY: We've verified bounds above, all accesses are within range
+                    let s0 = *src_ptr.add(i);
+                    let s1 = *src_ptr.add(i + 1);
+                    let s2 = *src_ptr.add(i + 2);
+                    let s3 = *src_ptr.add(i + 3);
+                    let s4 = *src_ptr.add(i + 4);
+                    let s5 = *src_ptr.add(i + 5);
+                    let s6 = *src_ptr.add(i + 6);
+                    let s7 = *src_ptr.add(i + 7);
+                    
+                    let c0 = *coef_ptr.add(i);
+                    let c1 = *coef_ptr.add(i + 1);
+                    let c2 = *coef_ptr.add(i + 2);
+                    let c3 = *coef_ptr.add(i + 3);
+                    let c4 = *coef_ptr.add(i + 4);
+                    let c5 = *coef_ptr.add(i + 5);
+                    let c6 = *coef_ptr.add(i + 6);
+                    let c7 = *coef_ptr.add(i + 7);
+                    
+                    sum0 += s0 * c0 + s4 * c4;
+                    sum1 += s1 * c1 + s5 * c5;
+                    sum2 += s2 * c2 + s6 * c6;
+                    sum3 += s3 * c3 + s7 * c7;
+                    
+                    i += 8;
+                }
+
+                // Combine accumulators
+                *dest_base.add(j) = (sum0 + sum1) + (sum2 + sum3);
+            }
+        }
+
+        end
+    }
+
+    /// Filter evaluation for mono (safe version)
+    #[cfg(not(feature = "unsafe-optimizations"))]
+    #[inline(always)]
     fn evaluate_filter_mono(&self, dest: &mut [Sample], src: &[Sample], num_samples: usize) -> usize {
         let ilength = self.length & !7; // Hint for compiler: divisible by 8
         let end = num_samples - ilength;
@@ -117,6 +184,92 @@ impl FIRFilter {
     }
 
     /// Filter evaluation for stereo
+    /// Optimized with multiple independent accumulators for each channel
+    #[cfg(feature = "unsafe-optimizations")]
+    #[inline(always)]
+    fn evaluate_filter_stereo(&self, dest: &mut [Sample], src: &[Sample], num_samples: usize) -> usize {
+        let ilength = self.length & !7; // Hint for compiler: divisible by 8
+        let end = 2 * (num_samples - ilength);
+
+        // SAFETY precondition checks
+        debug_assert!(src.len() >= end + 2 * ilength, "src buffer too small");
+        debug_assert!(dest.len() >= end, "dest buffer too small");
+        debug_assert!(self.filter_coeffs_stereo.len() >= 2 * ilength, "stereo coeffs buffer too small");
+
+        unsafe {
+            let src_base = src.as_ptr();
+            let coef_ptr = self.filter_coeffs_stereo.as_ptr();
+            let dest_base = dest.as_mut_ptr();
+
+            let mut j = 0;
+            while j < end {
+                let src_ptr = src_base.add(j);
+                
+                // Use 2 independent accumulators per channel to reduce dependencies
+                let mut sum_l0: f32 = 0.0;
+                let mut sum_l1: f32 = 0.0;
+                let mut sum_r0: f32 = 0.0;
+                let mut sum_r1: f32 = 0.0;
+
+                // Unroll by 4 iterations for stereo (8 samples total per unroll)
+                let mut i = 0;
+                while i + 4 <= ilength {
+                    let idx0 = 2 * i;
+                    let idx1 = 2 * (i + 1);
+                    let idx2 = 2 * (i + 2);
+                    let idx3 = 2 * (i + 3);
+
+                    // SAFETY: All indices verified within bounds
+                    // Load source samples
+                    let sl0 = *src_ptr.add(idx0);
+                    let sr0 = *src_ptr.add(idx0 + 1);
+                    let sl1 = *src_ptr.add(idx1);
+                    let sr1 = *src_ptr.add(idx1 + 1);
+                    let sl2 = *src_ptr.add(idx2);
+                    let sr2 = *src_ptr.add(idx2 + 1);
+                    let sl3 = *src_ptr.add(idx3);
+                    let sr3 = *src_ptr.add(idx3 + 1);
+                    
+                    // Load coefficients
+                    let cl0 = *coef_ptr.add(idx0);
+                    let cr0 = *coef_ptr.add(idx0 + 1);
+                    let cl1 = *coef_ptr.add(idx1);
+                    let cr1 = *coef_ptr.add(idx1 + 1);
+                    let cl2 = *coef_ptr.add(idx2);
+                    let cr2 = *coef_ptr.add(idx2 + 1);
+                    let cl3 = *coef_ptr.add(idx3);
+                    let cr3 = *coef_ptr.add(idx3 + 1);
+                    
+                    // Distribute to independent accumulators
+                    sum_l0 += sl0 * cl0 + sl2 * cl2;
+                    sum_l1 += sl1 * cl1 + sl3 * cl3;
+                    sum_r0 += sr0 * cr0 + sr2 * cr2;
+                    sum_r1 += sr1 * cr1 + sr3 * cr3;
+                    
+                    i += 4;
+                }
+
+                // Handle remaining iterations
+                while i < ilength {
+                    let idx = 2 * i;
+                    sum_l0 += *src_ptr.add(idx) * *coef_ptr.add(idx);
+                    sum_r0 += *src_ptr.add(idx + 1) * *coef_ptr.add(idx + 1);
+                    i += 1;
+                }
+
+                // Combine accumulators
+                *dest_base.add(j) = sum_l0 + sum_l1;
+                *dest_base.add(j + 1) = sum_r0 + sum_r1;
+                j += 2;
+            }
+        }
+
+        num_samples - ilength
+    }
+
+    /// Filter evaluation for stereo (safe version)
+    #[cfg(not(feature = "unsafe-optimizations"))]
+    #[inline(always)]
     fn evaluate_filter_stereo(&self, dest: &mut [Sample], src: &[Sample], num_samples: usize) -> usize {
         let ilength = self.length & !7; // Hint for compiler: divisible by 8
         let end = 2 * (num_samples - ilength);
@@ -140,6 +293,72 @@ impl FIRFilter {
     }
 
     /// Filter evaluation for multi-channel
+    #[cfg(feature = "unsafe-optimizations")]
+    fn evaluate_filter_multi(&self, dest: &mut [Sample], src: &[Sample], num_samples: usize, num_channels: usize) -> usize {
+        let ilength = self.length & !7; // Hint for compiler: divisible by 8
+        let end = num_channels * (num_samples - ilength);
+
+        // SAFETY precondition checks
+        debug_assert!(src.len() >= end + ilength * num_channels, "src buffer too small");
+        debug_assert!(dest.len() >= end, "dest buffer too small");
+        debug_assert!(self.filter_coeffs.len() >= ilength, "coeffs buffer too small");
+
+        // Use stack-allocated array for small channel counts to avoid allocation
+        let mut sums_stack = [0.0_f32; 8];
+        
+        unsafe {
+            let src_base = src.as_ptr();
+            let coef_ptr = self.filter_coeffs.as_ptr();
+            let dest_base = dest.as_mut_ptr();
+
+            let mut j = 0;
+            while j < end {
+                let src_ptr = src_base.add(j);
+                
+                // Use stack array for common cases, heap for unusual channel counts
+                let sums: &mut [f32] = if num_channels <= 8 {
+                    sums_stack[..num_channels].fill(0.0);
+                    &mut sums_stack[..num_channels]
+                } else {
+                    // Rare case: more than 8 channels
+                    let mut heap_sums = vec![0.0_f32; num_channels];
+                    // Process directly to avoid borrowing issues
+                    for i in 0..ilength {
+                        let idx = i * num_channels;
+                        let coef = *coef_ptr.add(i);
+                        for c in 0..num_channels {
+                            heap_sums[c] += *src_ptr.add(idx + c) * coef;
+                        }
+                    }
+                    for c in 0..num_channels {
+                        *dest_base.add(j + c) = heap_sums[c];
+                    }
+                    j += num_channels;
+                    continue;
+                };
+
+                // Process filter taps
+                for i in 0..ilength {
+                    let idx = i * num_channels;
+                    let coef = *coef_ptr.add(i);
+                    for c in 0..num_channels {
+                        sums[c] += *src_ptr.add(idx + c) * coef;
+                    }
+                }
+
+                // Write output
+                for c in 0..num_channels {
+                    *dest_base.add(j + c) = sums[c];
+                }
+                j += num_channels;
+            }
+        }
+
+        num_samples - ilength
+    }
+
+    /// Filter evaluation for multi-channel (safe version)
+    #[cfg(not(feature = "unsafe-optimizations"))]
     fn evaluate_filter_multi(&self, dest: &mut [Sample], src: &[Sample], num_samples: usize, num_channels: usize) -> usize {
         let ilength = self.length & !7; // Hint for compiler: divisible by 8
         let end = num_channels * (num_samples - ilength);

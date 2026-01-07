@@ -235,7 +235,8 @@ impl SoundTouch {
         let num_still_expected = num_still_expected_i32 as usize;
 
         // Push blank samples through to flush
-        let blank: Vec<Sample> = vec![0.0 as Sample; 128 * self.channels];
+        let blank: Vec<Sample> = vec![0.0; 128 * self.channels];
+
         for _ in 0..200 {
             if num_still_expected <= self.num_samples() {
                 break;

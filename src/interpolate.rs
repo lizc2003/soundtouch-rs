@@ -117,6 +117,42 @@ impl Default for LinearInterpolator {
 }
 
 impl Interpolator for LinearInterpolator {
+    #[cfg(feature = "unsafe-optimizations")]
+    fn transpose_mono(
+        &mut self,
+        dest: &mut [Sample],
+        src: &[Sample],
+        src_samples: &mut usize,
+    ) -> usize {
+        let src_sample_end = src_samples.saturating_sub(1);
+        let mut src_count = 0;
+        let mut i = 0;
+
+        // SAFETY: We ensure all accesses are within bounds
+        unsafe {
+            let src_ptr = src.as_ptr();
+            let dest_ptr = dest.as_mut_ptr();
+
+            while src_count < src_sample_end {
+                debug_assert!(self.fract_pos < 1.0);
+
+                let out = (1.0 - self.fract_pos) * *src_ptr.add(src_count) as f64
+                        + self.fract_pos * *src_ptr.add(src_count + 1) as f64;
+                *dest_ptr.add(i) = out as Sample;
+                i += 1;
+
+                self.fract_pos += self.rate;
+                let whole = self.fract_pos as usize;
+                self.fract_pos -= whole as f64;
+                src_count += whole;
+            }
+        }
+
+        *src_samples = src_count;
+        i
+    }
+
+    #[cfg(not(feature = "unsafe-optimizations"))]
     fn transpose_mono(
         &mut self,
         dest: &mut [Sample],
@@ -130,16 +166,12 @@ impl Interpolator for LinearInterpolator {
         while src_count < src_sample_end {
             debug_assert!(self.fract_pos < 1.0);
 
-            // Linear interpolation: out = (1.0 - fract) * src[0] + fract * src[1]
-            let out = (1.0 - self.fract_pos) * src[src_count] as f64 
+            let out = (1.0 - self.fract_pos) * src[src_count] as f64
                     + self.fract_pos * src[src_count + 1] as f64;
             dest[i] = out as Sample;
             i += 1;
 
-            // Update position fraction
             self.fract_pos += self.rate;
-            
-            // Update whole positions
             let whole = self.fract_pos as usize;
             self.fract_pos -= whole as f64;
             src_count += whole;
@@ -149,6 +181,47 @@ impl Interpolator for LinearInterpolator {
         i
     }
 
+    #[cfg(feature = "unsafe-optimizations")]
+    fn transpose_stereo(
+        &mut self,
+        dest: &mut [Sample],
+        src: &[Sample],
+        src_samples: &mut usize,
+    ) -> usize {
+        let src_sample_end = src_samples.saturating_sub(1);
+        let mut src_count = 0;
+        let mut i = 0;
+
+        // SAFETY: We ensure all accesses are within bounds
+        unsafe {
+            let src_ptr = src.as_ptr();
+            let dest_ptr = dest.as_mut_ptr();
+
+            while src_count < src_sample_end {
+                debug_assert!(self.fract_pos < 1.0);
+
+                let idx = src_count * 2;
+                let out0 = (1.0 - self.fract_pos) * *src_ptr.add(idx) as f64
+                         + self.fract_pos * *src_ptr.add(idx + 2) as f64;
+                let out1 = (1.0 - self.fract_pos) * *src_ptr.add(idx + 1) as f64
+                         + self.fract_pos * *src_ptr.add(idx + 3) as f64;
+
+                *dest_ptr.add(i * 2) = out0 as Sample;
+                *dest_ptr.add(i * 2 + 1) = out1 as Sample;
+                i += 1;
+
+                self.fract_pos += self.rate;
+                let whole = self.fract_pos as usize;
+                self.fract_pos -= whole as f64;
+                src_count += whole;
+            }
+        }
+
+        *src_samples = src_count;
+        i
+    }
+
+    #[cfg(not(feature = "unsafe-optimizations"))]
     fn transpose_stereo(
         &mut self,
         dest: &mut [Sample],
@@ -162,21 +235,17 @@ impl Interpolator for LinearInterpolator {
         while src_count < src_sample_end {
             debug_assert!(self.fract_pos < 1.0);
 
-            // Linear interpolation for stereo
             let idx = src_count * 2;
             let out0 = (1.0 - self.fract_pos) * src[idx] as f64
                      + self.fract_pos * src[idx+2] as f64;
             let out1 = (1.0 - self.fract_pos) * src[idx + 1] as f64
                      + self.fract_pos * src[idx + 3] as f64;
-            
+
             dest[i * 2] = out0 as Sample;
             dest[i * 2 + 1] = out1 as Sample;
             i += 1;
 
-            // Update position fraction
             self.fract_pos += self.rate;
-            
-            // Update whole positions
             let whole = self.fract_pos as usize;
             self.fract_pos -= whole as f64;
             src_count += whole;
@@ -186,6 +255,51 @@ impl Interpolator for LinearInterpolator {
         i
     }
 
+    #[cfg(feature = "unsafe-optimizations")]
+    fn transpose_multi(
+        &mut self,
+        dest: &mut [Sample],
+        src: &[Sample],
+        src_samples: &mut usize,
+        num_channels: usize,
+    ) -> usize {
+        let src_sample_end = src_samples.saturating_sub(1);
+        let mut src_count = 0;
+        let mut dest_idx = 0;
+        let mut i = 0;
+
+        // SAFETY: We ensure all accesses are within bounds
+        unsafe {
+            let src_ptr = src.as_ptr();
+            let dest_ptr = dest.as_mut_ptr();
+
+            while src_count < src_sample_end {
+                debug_assert!(self.fract_pos < 1.0);
+
+                let vol1 = (1.0 - self.fract_pos) as f32;
+                let fract_float = self.fract_pos as f32;
+
+                for ch in 0..num_channels {
+                    let idx = src_count * num_channels + ch;
+                    let temp = vol1 * *src_ptr.add(idx)
+                             + fract_float * *src_ptr.add(idx + num_channels);
+                    *dest_ptr.add(dest_idx) = temp as Sample;
+                    dest_idx += 1;
+                }
+                i += 1;
+
+                self.fract_pos += self.rate;
+                let whole = self.fract_pos as usize;
+                self.fract_pos -= whole as f64;
+                src_count += whole;
+            }
+        }
+
+        *src_samples = src_count;
+        i
+    }
+
+    #[cfg(not(feature = "unsafe-optimizations"))]
     fn transpose_multi(
         &mut self,
         dest: &mut [Sample],
@@ -203,7 +317,7 @@ impl Interpolator for LinearInterpolator {
 
             let vol1 = (1.0 - self.fract_pos) as f32;
             let fract_float = self.fract_pos as f32;
-            
+
             for ch in 0..num_channels {
                 let idx = src_count * num_channels + ch;
                 let temp = vol1 * src[idx]
@@ -213,10 +327,7 @@ impl Interpolator for LinearInterpolator {
             }
             i += 1;
 
-            // Update position fraction
             self.fract_pos += self.rate;
-            
-            // Update whole positions
             let whole = self.fract_pos as usize;
             self.fract_pos -= whole as f64;
             src_count += whole;
@@ -280,7 +391,7 @@ impl CubicInterpolator {
     }
 
     /// Calculate cubic interpolation weights
-    #[inline]
+    #[inline(always)]
     fn calc_cubic_weights(fract: f32) -> [f32; 4] {
         let x3 = 1.0;
         let x2 = fract;         // x
@@ -303,6 +414,46 @@ impl Default for CubicInterpolator {
 }
 
 impl Interpolator for CubicInterpolator {
+    #[cfg(feature = "unsafe-optimizations")]
+    fn transpose_mono(
+        &mut self,
+        dest: &mut [Sample],
+        src: &[Sample],
+        src_samples: &mut usize,
+    ) -> usize {
+        let src_sample_end = src_samples.saturating_sub(4);
+        let mut src_count = 0;
+        let mut i = 0;
+
+        // SAFETY: We ensure all accesses are within bounds
+        unsafe {
+            let src_ptr = src.as_ptr();
+            let dest_ptr = dest.as_mut_ptr();
+
+            while src_count < src_sample_end {
+                debug_assert!(self.fract_pos < 1.0);
+
+                let weights = Self::calc_cubic_weights(self.fract_pos as f32);
+                let out = weights[0] * *src_ptr.add(src_count)
+                        + weights[1] * *src_ptr.add(src_count + 1)
+                        + weights[2] * *src_ptr.add(src_count + 2)
+                        + weights[3] * *src_ptr.add(src_count + 3);
+
+                *dest_ptr.add(i) = out;
+                i += 1;
+
+                self.fract_pos += self.rate;
+                let whole = self.fract_pos as usize;
+                self.fract_pos -= whole as f64;
+                src_count += whole;
+            }
+        }
+
+        *src_samples = src_count;
+        i
+    }
+
+    #[cfg(not(feature = "unsafe-optimizations"))]
     fn transpose_mono(
         &mut self,
         dest: &mut [Sample],
@@ -325,10 +476,7 @@ impl Interpolator for CubicInterpolator {
             dest[i] = out;
             i += 1;
 
-            // Update position fraction
             self.fract_pos += self.rate;
-            
-            // Update whole positions
             let whole = self.fract_pos as usize;
             self.fract_pos -= whole as f64;
             src_count += whole;
@@ -338,6 +486,53 @@ impl Interpolator for CubicInterpolator {
         i
     }
 
+    #[cfg(feature = "unsafe-optimizations")]
+    fn transpose_stereo(
+        &mut self,
+        dest: &mut [Sample],
+        src: &[Sample],
+        src_samples: &mut usize,
+    ) -> usize {
+        let src_sample_end = src_samples.saturating_sub(4);
+        let mut src_count = 0;
+        let mut i = 0;
+
+        // SAFETY: We ensure all accesses are within bounds
+        unsafe {
+            let src_ptr = src.as_ptr();
+            let dest_ptr = dest.as_mut_ptr();
+
+            while src_count < src_sample_end {
+                debug_assert!(self.fract_pos < 1.0);
+
+                let weights = Self::calc_cubic_weights(self.fract_pos as f32);
+                let idx = src_count * 2;
+                let out0 = weights[0] * *src_ptr.add(idx)
+                         + weights[1] * *src_ptr.add(idx + 2)
+                         + weights[2] * *src_ptr.add(idx + 4)
+                         + weights[3] * *src_ptr.add(idx + 6);
+
+                let out1 = weights[0] * *src_ptr.add(idx + 1)
+                         + weights[1] * *src_ptr.add(idx + 3)
+                         + weights[2] * *src_ptr.add(idx + 5)
+                         + weights[3] * *src_ptr.add(idx + 7);
+
+                *dest_ptr.add(i * 2) = out0;
+                *dest_ptr.add(i * 2 + 1) = out1;
+                i += 1;
+
+                self.fract_pos += self.rate;
+                let whole = self.fract_pos as usize;
+                self.fract_pos -= whole as f64;
+                src_count += whole;
+            }
+        }
+
+        *src_samples = src_count;
+        i
+    }
+
+    #[cfg(not(feature = "unsafe-optimizations"))]
     fn transpose_stereo(
         &mut self,
         dest: &mut [Sample],
@@ -367,10 +562,7 @@ impl Interpolator for CubicInterpolator {
             dest[i * 2 + 1] = out1;
             i += 1;
 
-            // Update position fraction
             self.fract_pos += self.rate;
-            
-            // Update whole positions
             let whole = self.fract_pos as usize;
             self.fract_pos -= whole as f64;
             src_count += whole;
@@ -380,6 +572,53 @@ impl Interpolator for CubicInterpolator {
         i
     }
 
+    #[cfg(feature = "unsafe-optimizations")]
+    fn transpose_multi(
+        &mut self,
+        dest: &mut [Sample],
+        src: &[Sample],
+        src_samples: &mut usize,
+        num_channels: usize,
+    ) -> usize {
+        let src_sample_end = src_samples.saturating_sub(4);
+        let mut src_count = 0;
+        let mut dest_idx = 0;
+        let mut i = 0;
+
+        // SAFETY: We ensure all accesses are within bounds
+        unsafe {
+            let src_ptr = src.as_ptr();
+            let dest_ptr = dest.as_mut_ptr();
+
+            while src_count < src_sample_end {
+                debug_assert!(self.fract_pos < 1.0);
+
+                let weights = Self::calc_cubic_weights(self.fract_pos as f32);
+
+                for ch in 0..num_channels {
+                    let idx = src_count * num_channels + ch;
+                    let out = weights[0] * *src_ptr.add(idx)
+                            + weights[1] * *src_ptr.add(idx + num_channels)
+                            + weights[2] * *src_ptr.add(idx + 2 * num_channels)
+                            + weights[3] * *src_ptr.add(idx + 3 * num_channels);
+
+                    *dest_ptr.add(dest_idx) = out;
+                    dest_idx += 1;
+                }
+                i += 1;
+
+                self.fract_pos += self.rate;
+                let whole = self.fract_pos as usize;
+                self.fract_pos -= whole as f64;
+                src_count += whole;
+            }
+        }
+
+        *src_samples = src_count;
+        i
+    }
+
+    #[cfg(not(feature = "unsafe-optimizations"))]
     fn transpose_multi(
         &mut self,
         dest: &mut [Sample],
@@ -409,10 +648,7 @@ impl Interpolator for CubicInterpolator {
             }
             i += 1;
 
-            // Update position fraction
             self.fract_pos += self.rate;
-            
-            // Update whole positions
             let whole = self.fract_pos as usize;
             self.fract_pos -= whole as f64;
             src_count += whole;

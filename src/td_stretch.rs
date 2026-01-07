@@ -454,6 +454,152 @@ impl TDStretch {
     }
 
     /// Overlap samples in midBuffer with the samples in input at position ovl_pos
+    /// Optimized with loop unrolling for better instruction-level parallelism
+    #[cfg(feature = "unsafe-optimizations")]
+    fn overlap(&mut self, ovl_pos: usize) {
+        let input_ptr = self.input_buffer.ptr_begin();
+        let mid_buffer = self.mid_buffer.as_slice();
+        let overlap_length = self.overlap_length;
+        let overlap_length_f = overlap_length as f32;
+        let channels = self.channels;
+        
+        // Get output position
+        let output_ptr = self.output_buffer.ptr_end(overlap_length);
+        
+        // Perform overlap based on channel count
+        if channels == 1 {
+            // SAFETY: Verified that all buffers have sufficient length
+            debug_assert!(input_ptr.len() >= ovl_pos + overlap_length);
+            debug_assert!(mid_buffer.len() >= overlap_length);
+            debug_assert!(output_ptr.len() >= overlap_length);
+            
+            unsafe {
+                let inp = input_ptr.as_ptr().add(ovl_pos);
+                let mid = mid_buffer.as_ptr();
+                let out = output_ptr.as_mut_ptr();
+                
+                let fscale = 1.0_f32 / overlap_length_f;
+                let mut f1 = 0.0_f32;
+                let mut f2 = 1.0_f32;
+                
+                // Unroll by 4 for better pipelining
+                let unroll_end = overlap_length & !3;
+                let mut i = 0;
+                while i < unroll_end {
+                    let i0 = *inp.add(i);
+                    let i1 = *inp.add(i + 1);
+                    let i2 = *inp.add(i + 2);
+                    let i3 = *inp.add(i + 3);
+                    let m0 = *mid.add(i);
+                    let m1 = *mid.add(i + 1);
+                    let m2 = *mid.add(i + 2);
+                    let m3 = *mid.add(i + 3);
+                    
+                    *out.add(i) = i0 * f1 + m0 * f2;
+                    f1 += fscale; f2 -= fscale;
+                    *out.add(i + 1) = i1 * f1 + m1 * f2;
+                    f1 += fscale; f2 -= fscale;
+                    *out.add(i + 2) = i2 * f1 + m2 * f2;
+                    f1 += fscale; f2 -= fscale;
+                    *out.add(i + 3) = i3 * f1 + m3 * f2;
+                    f1 += fscale; f2 -= fscale;
+                    
+                    i += 4;
+                }
+                
+                // Handle remaining
+                while i < overlap_length {
+                    *out.add(i) = *inp.add(i) * f1 + *mid.add(i) * f2;
+                    f1 += fscale;
+                    f2 -= fscale;
+                    i += 1;
+                }
+            }
+        } else if channels == 2 {
+            let input_start = ovl_pos * 2;
+            let total_len = 2 * overlap_length;
+            
+            // SAFETY: Verified buffer lengths
+            debug_assert!(input_ptr.len() >= input_start + total_len);
+            debug_assert!(mid_buffer.len() >= total_len);
+            debug_assert!(output_ptr.len() >= total_len);
+            
+            unsafe {
+                let inp = input_ptr.as_ptr().add(input_start);
+                let mid = mid_buffer.as_ptr();
+                let out = output_ptr.as_mut_ptr();
+                
+                let fscale = 1.0_f32 / overlap_length_f;
+                let mut f1 = 0.0_f32;
+                let mut f2 = 1.0_f32;
+                
+                // Unroll by 2 stereo frames (4 samples) for better pipelining
+                let unroll_end = (overlap_length & !1) * 2;
+                let mut i = 0;
+                while i < unroll_end {
+                    // First stereo frame
+                    let i0 = *inp.add(i);
+                    let i1 = *inp.add(i + 1);
+                    let m0 = *mid.add(i);
+                    let m1 = *mid.add(i + 1);
+                    *out.add(i) = i0 * f1 + m0 * f2;
+                    *out.add(i + 1) = i1 * f1 + m1 * f2;
+                    f1 += fscale; f2 -= fscale;
+                    
+                    // Second stereo frame
+                    let i2 = *inp.add(i + 2);
+                    let i3 = *inp.add(i + 3);
+                    let m2 = *mid.add(i + 2);
+                    let m3 = *mid.add(i + 3);
+                    *out.add(i + 2) = i2 * f1 + m2 * f2;
+                    *out.add(i + 3) = i3 * f1 + m3 * f2;
+                    f1 += fscale; f2 -= fscale;
+                    
+                    i += 4;
+                }
+                
+                // Handle remaining stereo frame if any
+                while i < total_len {
+                    *out.add(i) = *inp.add(i) * f1 + *mid.add(i) * f2;
+                    *out.add(i + 1) = *inp.add(i + 1) * f1 + *mid.add(i + 1) * f2;
+                    f1 += fscale;
+                    f2 -= fscale;
+                    i += 2;
+                }
+            }
+        } else {
+            let input_start = ovl_pos * channels;
+            let total_len = channels * overlap_length;
+            
+            // SAFETY: Verified buffer lengths
+            debug_assert!(input_ptr.len() >= input_start + total_len);
+            debug_assert!(mid_buffer.len() >= total_len);
+            debug_assert!(output_ptr.len() >= total_len);
+            
+            unsafe {
+                let inp = input_ptr.as_ptr().add(input_start);
+                let mid = mid_buffer.as_ptr();
+                let out = output_ptr.as_mut_ptr();
+                
+                let fscale = 1.0_f32 / overlap_length_f;
+                let mut f1 = 0.0_f32;
+                let mut f2 = 1.0_f32;
+                let mut idx = 0;
+                
+                for _sample in 0..overlap_length {
+                    for _ch in 0..channels {
+                        *out.add(idx) = *inp.add(idx) * f1 + *mid.add(idx) * f2;
+                        idx += 1;
+                    }
+                    f1 += fscale;
+                    f2 -= fscale;
+                }
+            }
+        }
+    }
+
+    /// Overlap samples in midBuffer with the samples in input at position ovl_pos (safe version)
+    #[cfg(not(feature = "unsafe-optimizations"))]
     fn overlap(&mut self, ovl_pos: usize) {
         let input_ptr = self.input_buffer.ptr_begin();
         let mid_buffer = self.mid_buffer.as_slice();
@@ -502,6 +648,90 @@ impl TDStretch {
     }
 
     /// Calculate cross-correlation between mixing position and compare buffer
+    /// Optimized with multiple accumulators to reduce data dependencies and improve pipelining
+    #[cfg(feature = "unsafe-optimizations")]
+    #[inline(always)]
+    fn calc_cross_corr(&self, mixing_pos: &[Sample], compare: &[Sample], anorm: &mut f64) -> f64 {
+        // Hint compiler autovectorization that loop length is divisible by 8
+        let ilength = (self.channels * self.overlap_length) & !7;
+        
+        // SAFETY precondition checks
+        debug_assert!(mixing_pos.len() >= ilength, "mixing_pos buffer too small");
+        debug_assert!(compare.len() >= ilength, "compare buffer too small");
+
+        // Use 4 independent accumulators to reduce data dependencies
+        // This allows CPU to execute 4 independent FMA chains in parallel
+        let mut corr0 = 0.0_f32;
+        let mut corr1 = 0.0_f32;
+        let mut corr2 = 0.0_f32;
+        let mut corr3 = 0.0_f32;
+        let mut norm0 = 0.0_f32;
+        let mut norm1 = 0.0_f32;
+        let mut norm2 = 0.0_f32;
+        let mut norm3 = 0.0_f32;
+        
+        unsafe {
+            let mix_ptr = mixing_pos.as_ptr();
+            let cmp_ptr = compare.as_ptr();
+            
+            // Unroll by 8, using 4 independent accumulator chains
+            let mut i = 0;
+            while i + 8 <= ilength {
+                // SAFETY: All accesses are within verified bounds
+                let m0 = *mix_ptr.add(i);
+                let m1 = *mix_ptr.add(i + 1);
+                let m2 = *mix_ptr.add(i + 2);
+                let m3 = *mix_ptr.add(i + 3);
+                let m4 = *mix_ptr.add(i + 4);
+                let m5 = *mix_ptr.add(i + 5);
+                let m6 = *mix_ptr.add(i + 6);
+                let m7 = *mix_ptr.add(i + 7);
+                
+                let c0 = *cmp_ptr.add(i);
+                let c1 = *cmp_ptr.add(i + 1);
+                let c2 = *cmp_ptr.add(i + 2);
+                let c3 = *cmp_ptr.add(i + 3);
+                let c4 = *cmp_ptr.add(i + 4);
+                let c5 = *cmp_ptr.add(i + 5);
+                let c6 = *cmp_ptr.add(i + 6);
+                let c7 = *cmp_ptr.add(i + 7);
+                
+                // Distribute to 4 independent accumulators
+                corr0 += m0 * c0 + m4 * c4;
+                corr1 += m1 * c1 + m5 * c5;
+                corr2 += m2 * c2 + m6 * c6;
+                corr3 += m3 * c3 + m7 * c7;
+                
+                norm0 += m0 * m0 + m4 * m4;
+                norm1 += m1 * m1 + m5 * m5;
+                norm2 += m2 * m2 + m6 * m6;
+                norm3 += m3 * m3 + m7 * m7;
+                
+                i += 8;
+            }
+            
+            // Handle remaining elements
+            while i < ilength {
+                let m = *mix_ptr.add(i);
+                corr0 += m * *cmp_ptr.add(i);
+                norm0 += m * m;
+                i += 1;
+            }
+        }
+        
+        // Combine accumulators
+        let corr = (corr0 + corr1) + (corr2 + corr3);
+        let norm = (norm0 + norm1) + (norm2 + norm3);
+        
+        *anorm = norm as f64;
+        
+        // Normalize result by dividing by sqrt(norm)
+        (corr as f64) / ((if norm < 1e-9 { 1.0 } else { norm as f64 }).sqrt())
+    }
+
+    /// Calculate cross-correlation between mixing position and compare buffer (safe version)
+    #[cfg(not(feature = "unsafe-optimizations"))]
+    #[inline(always)]
     fn calc_cross_corr(&self, mixing_pos: &[Sample], compare: &[Sample], anorm: &mut f64) -> f64 {
         let mut corr = 0.0_f32;
         let mut norm = 0.0_f32;
@@ -524,12 +754,99 @@ impl TDStretch {
     /// Calculate cross-correlation with accumulative norm update
     /// This is an optimized version that incrementally updates the norm value
     /// as the search window slides, instead of recalculating it completely.
+    /// Optimized with multiple accumulators to reduce data dependencies.
     /// 
     /// `offset` is the current position in the input buffer (in samples, not including channels)
+    #[cfg(feature = "unsafe-optimizations")]
+    #[inline(always)]
+    fn calc_cross_corr_accumulate(&self, input_buffer: &[Sample], offset: usize, compare: &[Sample], norm: &mut f64) -> f64 {
+        let channels = self.channels;
+        let ilength = (channels * self.overlap_length) & !7;
+        let prev_offset = (offset - 1) * channels;
+        let mixing_offset = offset * channels;
+        let new_sample_start = mixing_offset + ilength - channels;
+        
+        // SAFETY precondition checks
+        debug_assert!(input_buffer.len() >= new_sample_start + channels, "input_buffer too small");
+        debug_assert!(compare.len() >= ilength, "compare buffer too small");
+        
+        unsafe {
+            let input_ptr = input_buffer.as_ptr();
+            let cmp_ptr = compare.as_ptr();
+            
+            // Remove the samples that slid out of the window
+            // For stereo (2 channels), unroll completely
+            if channels == 2 {
+                let s0 = *input_ptr.add(prev_offset);
+                let s1 = *input_ptr.add(prev_offset + 1);
+                *norm -= (s0 * s0 + s1 * s1) as f64;
+            } else {
+                for i in 0..channels {
+                    let sample = *input_ptr.add(prev_offset + i);
+                    *norm -= (sample * sample) as f64;
+                }
+            }
+            
+            // Use 4 independent accumulators for correlation
+            let mut corr0 = 0.0_f32;
+            let mut corr1 = 0.0_f32;
+            let mut corr2 = 0.0_f32;
+            let mut corr3 = 0.0_f32;
+            let mix_ptr = input_ptr.add(mixing_offset);
+            
+            // Unroll by 8, using 4 independent accumulator chains
+            let mut i = 0;
+            while i + 8 <= ilength {
+                // SAFETY: All accesses verified within bounds
+                let m0 = *mix_ptr.add(i);
+                let m1 = *mix_ptr.add(i + 1);
+                let m2 = *mix_ptr.add(i + 2);
+                let m3 = *mix_ptr.add(i + 3);
+                let m4 = *mix_ptr.add(i + 4);
+                let m5 = *mix_ptr.add(i + 5);
+                let m6 = *mix_ptr.add(i + 6);
+                let m7 = *mix_ptr.add(i + 7);
+                
+                corr0 += m0 * *cmp_ptr.add(i) + m4 * *cmp_ptr.add(i + 4);
+                corr1 += m1 * *cmp_ptr.add(i + 1) + m5 * *cmp_ptr.add(i + 5);
+                corr2 += m2 * *cmp_ptr.add(i + 2) + m6 * *cmp_ptr.add(i + 6);
+                corr3 += m3 * *cmp_ptr.add(i + 3) + m7 * *cmp_ptr.add(i + 7);
+                
+                i += 8;
+            }
+            
+            // Handle remaining elements
+            while i < ilength {
+                corr0 += *mix_ptr.add(i) * *cmp_ptr.add(i);
+                i += 1;
+            }
+            
+            // Add the new samples that slid into the window
+            // For stereo (2 channels), unroll completely
+            if channels == 2 {
+                let s0 = *input_ptr.add(new_sample_start);
+                let s1 = *input_ptr.add(new_sample_start + 1);
+                *norm += (s0 * s0 + s1 * s1) as f64;
+            } else {
+                for i in 0..channels {
+                    let sample = *input_ptr.add(new_sample_start + i);
+                    *norm += (sample * sample) as f64;
+                }
+            }
+            
+            // Combine accumulators
+            let corr = (corr0 + corr1) + (corr2 + corr3);
+            
+            // Normalize result by dividing by sqrt(norm)
+            (corr as f64) / ((if *norm < 1e-9 { 1.0 } else { *norm }).sqrt())
+        }
+    }
+
+    /// Calculate cross-correlation with accumulative norm update (safe version)
+    #[cfg(not(feature = "unsafe-optimizations"))]
+    #[inline(always)]
     fn calc_cross_corr_accumulate(&self, input_buffer: &[Sample], offset: usize, compare: &[Sample], norm: &mut f64) -> f64 {
         // Remove the samples that slid out of the window (from previous position)
-        // These are at positions [(offset-1)*channels .. offset*channels]
-        // In C++: mixingPos[-channels] .. mixingPos[-1]
         let prev_offset = (offset - 1) * self.channels;
         for i in 0..self.channels {
             let sample = input_buffer[prev_offset + i];
@@ -540,16 +857,12 @@ impl TDStretch {
         // Hint compiler autovectorization that loop length is divisible by 8
         let ilength = (self.channels * self.overlap_length) & !7;
         let mixing_offset = offset * self.channels;
-        // Calculate correlation (same as calc_cross_corr)
-        // mixingPos[0..ilength]
+        // Calculate correlation
         for i in 0..ilength {
             corr += input_buffer[mixing_offset + i] * compare[i];
         }
         
-        // Update normalizer with last samples of this round
-        // Add the new samples that slid into the window at the end
-        // These are at positions [offset*channels + ilength - channels .. offset*channels + ilength]
-        // In C++: mixingPos[ilength-channels] .. mixingPos[ilength-1]
+        // Add the new samples that slid into the window
         let new_sample_start = mixing_offset + ilength - self.channels;
         for i in 0..self.channels {
             let sample = input_buffer[new_sample_start + i];

@@ -25,10 +25,18 @@ thiserror = "2.0"
 
 [dev-dependencies]
 
+[features]
+default = ["unsafe-optimizations"]
+unsafe-optimizations = []  # Enable unsafe optimizations for better performance
+
 [profile.release]
-lto = true
-codegen-units = 1
-strip = true
+opt-level = 3           # Maximum optimization level (matches C++ -O3)
+lto = "fat"             # Aggressive link-time optimization
+codegen-units = 1       # Single codegen unit for better optimization
+panic = "abort"         # Reduce panic handling overhead
+overflow-checks = false # Disable overflow checks (safe for audio DSP)
+debug = false           # Strip all debug info
+strip = true            # Strip symbols
 
 [profile.bench]
 inherits = "release"
