@@ -193,12 +193,6 @@ impl SoundTouchWasm {
     }
 }
 
-/// Get SoundTouch version string
-#[wasm_bindgen(js_name = getVersion)]
-pub fn get_version() -> String {
-    SoundTouch::version().to_string()
-}
-
 /// Get SoundTouch version ID
 #[wasm_bindgen(js_name = getVersionId)]
 pub fn get_version_id() -> u32 {
