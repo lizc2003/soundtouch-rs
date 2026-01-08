@@ -10,12 +10,10 @@
  * - Add error handling and recovery
  */
 
-// Import WASM module (you'll need to adjust this based on your build)
-// For AudioWorklet, you might need to use importScripts or dynamic import
-// This is a placeholder - actual implementation may vary
-importScripts('../pkg-web/soundtouch.js');
+import { initSync, SoundTouchWasm } from './pkg-web/soundtouch.js';
 
-const { SoundTouchWasm } = wasm_bindgen;
+// Global variable to track initialization
+let wasmInitialized = false;
 
 class SoundTouchProcessor extends AudioWorkletProcessor {
     constructor(options) {
@@ -24,16 +22,15 @@ class SoundTouchProcessor extends AudioWorkletProcessor {
         this.sampleRate = options.processorOptions.sampleRate || 48000;
         this.tempo = options.processorOptions.tempo || 1.0;
         this.pitch = options.processorOptions.pitch || 0;
+        this.wasmBytes = options.processorOptions.wasmBytes;
         
         this.initialized = false;
         this.soundtouch = null;
         
-        // Buffering
-        this.inputBuffer = [];
-        this.outputBuffer = [];
-        this.bufferSize = 4096;
+        // Output buffer
+        this.buffer = [];
         
-        // Initialize asynchronously
+        // Initialize synchronously with provided WASM bytes
         this.init();
         
         // Listen for parameter changes
@@ -55,10 +52,13 @@ class SoundTouchProcessor extends AudioWorkletProcessor {
         };
     }
     
-    async init() {
+    init() {
         try {
-            // Initialize WASM
-            await wasm_bindgen('../pkg-web/soundtouch_bg.wasm');
+            // Initialize WASM module if not already done
+            if (!wasmInitialized && this.wasmBytes) {
+                initSync({ module: this.wasmBytes });
+                wasmInitialized = true;
+            }
             
             // Create SoundTouch instance
             this.soundtouch = new SoundTouchWasm(this.sampleRate, 2); // stereo
@@ -79,64 +79,87 @@ class SoundTouchProcessor extends AudioWorkletProcessor {
     
     process(inputs, outputs, parameters) {
         if (!this.initialized || !this.soundtouch) {
-            // Pass through unchanged until initialized
-            if (inputs[0] && inputs[0][0]) {
-                for (let channel = 0; channel < outputs[0].length; channel++) {
-                    outputs[0][channel].set(inputs[0][channel]);
-                }
-            }
             return true;
         }
         
         const input = inputs[0];
         const output = outputs[0];
         
-        if (!input || !input[0]) {
+        // Check if we have valid output
+        if (!output || !output[0]) {
             return true;
         }
         
-        const channels = Math.min(input.length, 2);
-        const frameCount = input[0].length;
+        // Determine actual number of output channels available
+        const channels = 2;
+        const actualOutputChannels = output.length;
+        const frameCount = output[0].length;
         
-        try {
-            // Convert to interleaved format
-            const interleaved = new Float32Array(frameCount * channels);
-            for (let frame = 0; frame < frameCount; frame++) {
-                for (let ch = 0; ch < channels; ch++) {
-                    const sample = input[ch] ? input[ch][frame] : 0;
-                    interleaved[frame * channels + ch] = sample;
+        // If we don't have stereo output, just pass through silence
+        if (actualOutputChannels < 2 || !output[1]) {
+            for (let ch = 0; ch < actualOutputChannels; ch++) {
+                if (output[ch]) {
+                    output[ch].fill(0);
                 }
             }
-            
-            // Put samples into SoundTouch
-            this.soundtouch.putSamples(interleaved);
-            
-            // Receive processed samples
-            const outputInterleaved = new Float32Array(frameCount * channels * 2);
-            const receivedFrames = this.soundtouch.receiveSamples(outputInterleaved);
-            
-            // Convert back to planar format
-            for (let ch = 0; ch < output.length; ch++) {
-                const outputChannel = output[ch];
-                for (let frame = 0; frame < Math.min(receivedFrames, frameCount); frame++) {
-                    outputChannel[frame] = outputInterleaved[frame * channels + ch];
+            return true;
+        }
+        
+        try {
+            // Feed input to SoundTouch
+            if (input && input[0] && input[0].length > 0) {
+                const inputInterleaved = new Float32Array(input[0].length * channels);
+                for (let frame = 0; frame < input[0].length; frame++) {
+                    inputInterleaved[frame * channels] = input[0][frame];
+                    inputInterleaved[frame * channels + 1] = input[1] ? input[1][frame] : input[0][frame];
                 }
-                
-                // Zero out remaining frames if any
-                for (let frame = receivedFrames; frame < frameCount; frame++) {
-                    outputChannel[frame] = 0;
+                this.soundtouch.putSamples(inputInterleaved);
+            }
+            
+            // Get processed samples and buffer them
+            const tempBuffer = new Float32Array(frameCount * channels * 4);
+            const receivedFrames = this.soundtouch.receiveSamples(tempBuffer);
+            
+            // Add to buffer
+            for (let i = 0; i < receivedFrames * channels; i++) {
+                this.buffer.push(tempBuffer[i]);
+            }
+            
+            // Output from buffer
+            const neededSamples = frameCount * channels;
+            
+            if (this.buffer.length >= neededSamples) {
+                // We have enough samples
+                let idx = 0;
+                for (let frame = 0; frame < frameCount; frame++) {
+                    if (output[0]) output[0][frame] = this.buffer[idx++];
+                    if (output[1]) output[1][frame] = this.buffer[idx++];
+                }
+                // Remove used samples
+                this.buffer.splice(0, neededSamples);
+            } else {
+                // Not enough - pass through input
+                if (input && input[0]) {
+                    for (let ch = 0; ch < output.length; ch++) {
+                        output[ch].set(input[ch] || input[0]);
+                    }
+                } else {
+                    for (let ch = 0; ch < output.length; ch++) {
+                        output[ch].fill(0);
+                    }
                 }
             }
             
         } catch (err) {
             console.error('Processing error:', err);
-            // On error, pass through unchanged
-            for (let channel = 0; channel < output.length; channel++) {
-                output[channel].set(input[channel]);
+            for (let ch = 0; ch < output.length; ch++) {
+                if (output[ch]) {
+                    output[ch].fill(0);
+                }
             }
         }
         
-        return true; // Keep processor alive
+        return true;
     }
 }
 

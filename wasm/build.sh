@@ -19,10 +19,8 @@ fi
 
 # Default target
 TARGET=${1:-web}
-BUILD_TYPE=${2:-release}
 
 echo -e "${YELLOW}Target: $TARGET${NC}"
-echo -e "${YELLOW}Build type: $BUILD_TYPE${NC}"
 
 # Build directory
 PKG_DIR="wasm/pkg-$TARGET"
@@ -32,16 +30,21 @@ PKG_DIR="wasm/pkg-$TARGET"
 # wasm-pack build --release --target web --features wasm --out-dir wasm/pkg -- --no-default-features -Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort
 
 # Build command
-if [ "$BUILD_TYPE" = "release" ]; then
-    echo -e "${GREEN}Building release version...${NC}"
-    wasm-pack build --$BUILD_TYPE --target $TARGET --features "default,wasm"
-    rm -rf $PKG_DIR
-    mv pkg $PKG_DIR
-else
-    echo -e "${GREEN}Building debug version...${NC}"
-    wasm-pack build --dev --target $TARGET --features "default,wasm"
-    rm -rf $PKG_DIR
-    mv pkg $PKG_DIR
+echo -e "${GREEN}Building release version...${NC}"
+wasm-pack build --release --target $TARGET --features "default,wasm"
+rm -rf $PKG_DIR
+mv pkg $PKG_DIR
+
+if [ "$TARGET" = "web" ]; then
+    cat wasm/polyfill.js $PKG_DIR/soundtouch.js > temp && mv temp $PKG_DIR/soundtouch.js
+elif [ "$TARGET" = "bundler" ]; then
+    cat wasm/polyfill.js $PKG_DIR/soundtouch_bg.js > temp && mv temp $PKG_DIR/soundtouch_bg.js
+    sed -i -e 's/"soundtouch-rs"/"soundtouch"/g' $PKG_DIR/package.json
+    rm -f $PKG_DIR/package.json-e
+    cd wasm
+    rm -f soundtouch.tgz
+    tar zcvf soundtouch.tgz pkg-bundler
+    cd ..
 fi
 
 echo -e "${GREEN}Build complete! Output: $PKG_DIR${NC}"

@@ -22,13 +22,13 @@ curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
 ```bash
 # Build for web (generates ES modules)
-./wasm/build.sh web release
+./wasm/build.sh web
 
 # Build for Node.js
-./wasm/build.sh nodejs release
+./wasm/build.sh nodejs
 
 # Build for bundlers (webpack, rollup, etc.)
-./wasm/build.sh bundler release
+./wasm/build.sh bundler
 ```
 
 ## Usage
@@ -237,7 +237,6 @@ Get the sample rate.
 ### Static Functions
 
 ```typescript
-getVersion(): string
 getVersionId(): number
 ```
 
@@ -262,7 +261,7 @@ http://localhost:8000/simple.html
 
 1. Build the Node.js version:
 ```bash
-./wasm/build.sh nodejs release
+./wasm/build.sh nodejs
 ```
 
 2. Run the example:

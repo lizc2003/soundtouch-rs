@@ -138,7 +138,7 @@
     <script type="module">
         // Import SoundTouch WASM module
         // Note: Update the path to match your build output directory
-        import init, { SoundTouchWasm, getVersion } from '../pkg-web/soundtouch.js';
+        import init, { SoundTouchWasm, getVersionId } from '../pkg-web/soundtouch.js';
 
         let audioContext;
         let originalBuffer;
@@ -164,8 +164,8 @@
         async function initWasm() {
             try {
                 await init();
-                const version = getVersion();
-                status.textContent = `SoundTouch WASM ${version} initialized successfully!`;
+                const version = getVersionId();
+                status.textContent = `SoundTouch WASM Version-${version} initialized successfully!`;
             } catch (err) {
                 status.textContent = `Error initializing WASM: ${err}`;
                 console.error(err);

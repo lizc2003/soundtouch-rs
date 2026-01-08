@@ -74,17 +74,18 @@
                 <li>Build the WASM module for web target</li>
                 <li>Serve this page over HTTP/HTTPS (not file://)</li>
                 <li>Have the worklet processor script in the same directory</li>
+                <li><strong>Click "Start Processing"</strong> - AudioContext requires user interaction due to browser autoplay policy</li>
             </ul>
         </div>
 
         <div class="control">
             <label for="audioSource">Audio Source:</label>
             <select id="audioSource">
+                <option value="file">Audio File</option>
                 <option value="oscillator">Oscillator (440 Hz)</option>
                 <option value="microphone">Microphone</option>
-                <option value="file">Audio File</option>
             </select>
-            <input type="file" id="audioFile" accept="audio/*" style="display:none;">
+            <input type="file" id="audioFile" accept="audio/*" style="display:block;">
         </div>
 
         <div class="control">
@@ -102,7 +103,8 @@
             <button id="stopBtn" disabled>Stop Processing</button>
         </div>
 
-        <div id="status">Ready. Select an audio source and click Start.</div>
+        <div id="status">Ready. Select an audio source and click "Start Processing". 
+        <br><small>(User interaction required for AudioContext - this is a browser security feature)</small></div>
     </div>
 
     <script type="module">
@@ -110,6 +112,8 @@
         let sourceNode;
         let soundtouchNode;
         let isProcessing = false;
+        let workletLoaded = false;
+        let wasmBytes = null;
 
         const audioSourceSelect = document.getElementById('audioSource');
         const audioFileInput = document.getElementById('audioFile');
@@ -150,15 +154,79 @@
                 audioSourceSelect.value === 'file' ? 'block' : 'none';
         });
 
+        // Check browser support on page load (without creating AudioContext)
+        window.addEventListener('DOMContentLoaded', () => {
+            // Basic API availability check only
+            if (!window.AudioContext && !window.webkitAudioContext) {
+                status.textContent = '❌ Error: Your browser does not support Web Audio API';
+                status.style.background = '#ffcccc';
+                startBtn.disabled = true;
+                return;
+            }
+            
+            // Note: We don't check AudioWorklet here to avoid creating AudioContext prematurely
+            // The check will happen when user clicks Start button
+        });
+
         // Start processing
         startBtn.addEventListener('click', async () => {
             try {
+                // Initialize AudioContext if needed (only on user interaction)
                 if (!audioContext) {
-                    audioContext = new AudioContext();
+                    status.textContent = 'Initializing AudioContext...';
+                    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
                     
-                    // Load the AudioWorklet processor
-                    await audioContext.audioWorklet.addModule('soundtouch-processor.js');
-                    status.textContent = 'AudioWorklet loaded successfully!';
+                    if (!AudioContextClass) {
+                        throw new Error('AudioContext is not supported in your browser');
+                    }
+                    
+                    // Create AudioContext only when user clicks (good practice)
+                    audioContext = new AudioContextClass();
+                    
+                    // Verify AudioWorklet support (now that we have a real context)
+                    if (!audioContext.audioWorklet) {
+                        audioContext.close(); // Clean up
+                        audioContext = null;
+                        throw new Error('AudioWorklet is not supported. Make sure you are accessing via HTTP/HTTPS (not file://)');
+                    }
+                    
+                    status.textContent = `AudioContext created (state: ${audioContext.state})`;
+                }
+                
+                // Resume AudioContext if it's suspended
+                // Note: Due to browser autoplay policy, AudioContext starts in 'suspended' state
+                // and requires user interaction (like clicking a button) to resume
+                if (audioContext.state === 'suspended') {
+                    status.textContent = 'Activating AudioContext (browser autoplay policy)...';
+                    await audioContext.resume();
+                    status.textContent = 'AudioContext activated!';
+                }
+                
+                // Load WASM bytes if not already loaded
+                if (!wasmBytes) {
+                    status.textContent = 'Loading WASM module...';
+                    try {
+                        const response = await fetch('./pkg-web/soundtouch_bg.wasm');
+                        if (!response.ok) {
+                            throw new Error(`Failed to fetch WASM: ${response.status}`);
+                        }
+                        wasmBytes = await response.arrayBuffer();
+                        status.textContent = 'WASM module loaded!';
+                    } catch (err) {
+                        throw new Error(`Failed to load WASM: ${err.message}`);
+                    }
+                }
+                
+                // Load the AudioWorklet processor if not already loaded
+                if (!workletLoaded) {
+                    status.textContent = 'Loading AudioWorklet module...';
+                    try {
+                        await audioContext.audioWorklet.addModule('soundtouch-processor.js');
+                        workletLoaded = true;
+                        status.textContent = 'AudioWorklet loaded successfully!';
+                    } catch (err) {
+                        throw new Error(`Failed to load AudioWorklet module: ${err.message}. Make sure you're serving this page via HTTP (not file://) and that soundtouch-processor.js exists.`);
+                    }
                 }
 
                 // Create source based on selection
@@ -191,7 +259,8 @@
                     processorOptions: {
                         sampleRate: audioContext.sampleRate,
                         tempo: parseFloat(tempoSlider.value),
-                        pitch: parseFloat(pitchSlider.value)
+                        pitch: parseFloat(pitchSlider.value),
+                        wasmBytes: wasmBytes
                     }
                 });
 

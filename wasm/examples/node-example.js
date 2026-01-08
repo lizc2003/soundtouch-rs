@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 
 // Import SoundTouch WASM (adjust path based on your build)
-const { SoundTouchWasm, getVersion } = require('../pkg-nodejs/soundtouch.js');
+const { SoundTouchWasm, getVersionId } = require('../pkg-nodejs/soundtouch.js');
 
 /**
  * Generate a simple sine wave for testing
@@ -157,7 +157,7 @@ function main() {
     console.log('='.repeat(60));
     console.log('SoundTouch WASM - Node.js Example');
     console.log('='.repeat(60));
-    console.log(`SoundTouch version: ${getVersion()}`);
+    console.log(`SoundTouch version: ${getVersionId()}`);
     
     // Example 1: Speed up (faster tempo, same pitch)
     console.log('\n' + '-'.repeat(60));
