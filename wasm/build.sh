@@ -42,8 +42,8 @@ elif [ "$TARGET" = "bundler" ]; then
     sed -i -e 's/"soundtouch-rs"/"soundtouch"/g' $PKG_DIR/package.json
     rm -f $PKG_DIR/package.json-e
     cd wasm
-    rm -f soundtouch.tgz
-    tar zcvf soundtouch.tgz pkg-bundler
+    rm -f soundtouch-wasm.tgz
+    tar zcvf soundtouch-wasm.tgz pkg-bundler
     cd ..
 fi
 
