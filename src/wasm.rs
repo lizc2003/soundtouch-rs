@@ -32,18 +32,15 @@ impl SoundTouchWasm {
     /// * `sample_rate` - Sample rate in Hz (e.g., 44100, 48000)
     /// * `channels` - Number of channels (1 for mono, 2 for stereo)
     #[wasm_bindgen(constructor)]
-    pub fn new(sample_rate: u32, channels: usize) -> Result<SoundTouchWasm, JsValue> {
+    pub fn new(sample_rate: u32, channels: usize, use_quick_seek: bool, use_aa_filter: bool) -> Result<SoundTouchWasm, JsValue> {
         let mut inner = SoundTouch::new();
         
-        inner.set_sample_rate(sample_rate);
         inner.set_channels(channels)
             .map_err(|e| JsValue::from_str(&format!("Failed to set channels: {}", e)))?;
         
-        // Set default settings to match C++ wrapper
-        inner.set_tempo(1.0);
-        inner.set_pitch(1.0);
-        inner.set_setting(crate::types::SettingId::UseQuickSeek, 1);
-        inner.set_setting(crate::types::SettingId::UseAAFilter, 0);
+        inner.set_sample_rate(sample_rate);
+        inner.set_setting(crate::types::SettingId::UseQuickSeek, use_quick_seek as i32);
+        inner.set_setting(crate::types::SettingId::UseAAFilter, use_aa_filter as i32);
         
         Ok(SoundTouchWasm {
             inner,
@@ -205,7 +202,7 @@ mod tests {
     
     #[test]
     fn test_wasm_wrapper_creation() {
-        let st = SoundTouchWasm::new(44100, 2);
+        let st = SoundTouchWasm::new(44100, 2, true, false);
         assert!(st.is_ok());
         let st = st.unwrap();
         assert_eq!(st.get_channels(), 2);
@@ -214,7 +211,7 @@ mod tests {
     
     #[test]
     fn test_wasm_wrapper_settings() {
-        let mut st = SoundTouchWasm::new(44100, 2).unwrap();
+        let mut st = SoundTouchWasm::new(44100, 2, true, false).unwrap();
         st.set_tempo(1.5);
         st.set_pitch_semitones(2.0);
         st.set_rate(1.0);
@@ -222,7 +219,7 @@ mod tests {
     
     #[test]
     fn test_wasm_wrapper_processing() {
-        let mut st = SoundTouchWasm::new(44100, 2).unwrap();
+        let mut st = SoundTouchWasm::new(44100, 2, true, false).unwrap();
         
         // Generate 1 second of silence
         let input: Vec<f32> = vec![0.0; 44100 * 2];
@@ -236,4 +233,3 @@ mod tests {
         assert!(received > 0);
     }
 }
-

@@ -1,19 +1,10 @@
 /**
  * SoundTouch AudioWorklet Processor
- * 
- * This processor runs in the audio thread and applies SoundTouch processing
- * to incoming audio in real-time.
- * 
- * Note: This is a simplified example. For production use, you may need to:
- * - Handle latency compensation
- * - Implement better buffering
- * - Add error handling and recovery
  */
 
-import './pkg-web/soundtouch_worklet.js';
-
-// Global variable to track initialization
 let wasmInitialized = false;
+let SoundTouchWasm = null;
+let initSync = null;
 
 class SoundTouchProcessor extends AudioWorkletProcessor {
     constructor(options) {
@@ -23,22 +14,17 @@ class SoundTouchProcessor extends AudioWorkletProcessor {
         this.tempo = options.processorOptions.tempo || 1.0;
         this.pitch = options.processorOptions.pitch || 0;
         this.wasmBytes = options.processorOptions.wasmBytes;
+        this.soundtouchCode = options.processorOptions.soundtouchCode;
         
         this.initialized = false;
         this.soundtouch = null;
-        
-        // Output buffer
         this.buffer = [];
         
-        // Initialize synchronously with provided WASM bytes
         this.init();
         
-        // Listen for parameter changes
         this.port.onmessage = (event) => {
             const { type, value } = event.data;
-            
             if (!this.soundtouch) return;
-            
             switch (type) {
                 case 'setTempo':
                     this.tempo = value;
@@ -54,59 +40,60 @@ class SoundTouchProcessor extends AudioWorkletProcessor {
     
     init() {
         try {
-            // Initialize WASM module if not already done
-            if (!wasmInitialized && this.wasmBytes) {
+            if (!this.wasmBytes) {
+                throw new Error('WASM bytes not provided');
+            }
+            if (!this.soundtouchCode) {
+                throw new Error('soundtouchCode not provided');
+            }
+            
+            if (!wasmInitialized) {
+                // Execute soundtouch code to populate globalThis
+                const fn = new Function(this.soundtouchCode);
+                fn();
+                
+                SoundTouchWasm = globalThis.SoundTouchWasm;
+                initSync = globalThis.initSync;
+                
+                if (!initSync || !SoundTouchWasm) {
+                    throw new Error('SoundTouch exports not found in globalThis');
+                }
+                
                 initSync({ module: this.wasmBytes });
                 wasmInitialized = true;
             }
             
-            // Create SoundTouch instance
-            this.soundtouch = new SoundTouchWasm(this.sampleRate, 2, true, false); // stereo
+            this.soundtouch = new SoundTouchWasm(this.sampleRate, 2, true, false);
             this.soundtouch.setTempo(this.tempo);
             this.soundtouch.setPitchSemitones(this.pitch);
             
             this.initialized = true;
-            
             this.port.postMessage({ type: 'initialized' });
         } catch (err) {
             console.error('Failed to initialize SoundTouch:', err);
-            this.port.postMessage({ 
-                type: 'error', 
-                message: err.toString() 
-            });
+            this.port.postMessage({ type: 'error', message: err.toString() });
         }
     }
     
     process(inputs, outputs, parameters) {
-        if (!this.initialized || !this.soundtouch) {
-            return true;
-        }
-        
         const input = inputs[0];
         const output = outputs[0];
         
-        // Check if we have valid output
-        if (!output || !output[0]) {
-            return true;
-        }
+        if (!output || !output[0]) return true;
         
-        // Determine actual number of output channels available
-        const channels = 2;
-        const actualOutputChannels = output.length;
-        const frameCount = output[0].length;
-        
-        // If we don't have stereo output, just pass through silence
-        if (actualOutputChannels < 2 || !output[1]) {
-            for (let ch = 0; ch < actualOutputChannels; ch++) {
-                if (output[ch]) {
-                    output[ch].fill(0);
+        if (!this.initialized || !this.soundtouch) {
+            if (input && input[0]) {
+                for (let ch = 0; ch < Math.min(input.length, output.length); ch++) {
+                    if (input[ch] && output[ch]) output[ch].set(input[ch]);
                 }
             }
             return true;
         }
         
+        const channels = 2;
+        const frameCount = output[0].length;
+        
         try {
-            // Feed input to SoundTouch
             if (input && input[0] && input[0].length > 0) {
                 const inputInterleaved = new Float32Array(input[0].length * channels);
                 for (let frame = 0; frame < input[0].length; frame++) {
@@ -116,29 +103,23 @@ class SoundTouchProcessor extends AudioWorkletProcessor {
                 this.soundtouch.putSamples(inputInterleaved);
             }
             
-            // Get processed samples and buffer them
             const tempBuffer = new Float32Array(frameCount * channels * 4);
             const receivedFrames = this.soundtouch.receiveSamples(tempBuffer);
             
-            // Add to buffer
             for (let i = 0; i < receivedFrames * channels; i++) {
                 this.buffer.push(tempBuffer[i]);
             }
             
-            // Output from buffer
             const neededSamples = frameCount * channels;
             
             if (this.buffer.length >= neededSamples) {
-                // We have enough samples
                 let idx = 0;
                 for (let frame = 0; frame < frameCount; frame++) {
                     if (output[0]) output[0][frame] = this.buffer[idx++];
                     if (output[1]) output[1][frame] = this.buffer[idx++];
                 }
-                // Remove used samples
                 this.buffer.splice(0, neededSamples);
             } else {
-                // Not enough - pass through input
                 if (input && input[0]) {
                     for (let ch = 0; ch < output.length; ch++) {
                         output[ch].set(input[ch] || input[0]);
@@ -149,13 +130,10 @@ class SoundTouchProcessor extends AudioWorkletProcessor {
                     }
                 }
             }
-            
         } catch (err) {
             console.error('Processing error:', err);
             for (let ch = 0; ch < output.length; ch++) {
-                if (output[ch]) {
-                    output[ch].fill(0);
-                }
+                if (output[ch]) output[ch].fill(0);
             }
         }
         
@@ -164,4 +142,3 @@ class SoundTouchProcessor extends AudioWorkletProcessor {
 }
 
 registerProcessor('soundtouch-processor', SoundTouchProcessor);
-

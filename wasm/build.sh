@@ -36,14 +36,18 @@ rm -rf $PKG_DIR
 mv pkg $PKG_DIR
 
 if [ "$TARGET" = "web" ]; then
-    cat wasm/polyfill.js $PKG_DIR/soundtouch.js > temp && mv temp $PKG_DIR/soundtouch.js
-elif [ "$TARGET" = "bundler" ]; then
-    cat wasm/polyfill.js $PKG_DIR/soundtouch_bg.js > temp && mv temp $PKG_DIR/soundtouch_bg.js
+    cp $PKG_DIR/soundtouch.js $PKG_DIR/soundtouch_worklet.js
+    sed -i -e 's/export default __wbg_init;//' $PKG_DIR/soundtouch_worklet.js
+    sed -i -e 's/export { initSync };/globalThis.initSync = initSync;\nglobalThis.SoundTouchWasm = SoundTouchWasm;/' $PKG_DIR/soundtouch_worklet.js
+    sed -i -e 's/export //g' $PKG_DIR/soundtouch_worklet.js
+    sed -i -e 's/import.meta.url/""/g' $PKG_DIR/soundtouch_worklet.js
+    rm -f $PKG_DIR/soundtouch_worklet.js-e
+    cat wasm/polyfill.js $PKG_DIR/soundtouch_worklet.js > temp && mv temp $PKG_DIR/soundtouch_worklet.js
     sed -i -e 's/"soundtouch-rs"/"soundtouch"/g' $PKG_DIR/package.json
     rm -f $PKG_DIR/package.json-e
     cd wasm
     rm -f soundtouch-wasm.tgz
-    tar zcvf soundtouch-wasm.tgz pkg-bundler
+    tar zcvf soundtouch-wasm.tgz pkg-web
     cd ..
 fi
 
@@ -63,17 +67,17 @@ case $TARGET in
         echo "  <script type=\"module\">"
         echo "    import init, { SoundTouchWasm } from './$PKG_DIR/soundtouch.js';"
         echo "    await init();"
-        echo "    const st = new SoundTouchWasm(44100, 2);"
+        echo "    const st = new SoundTouchWasm(44100, 2, true, false);"
         echo "  </script>"
         ;;
     nodejs)
         echo "  In your Node.js code:"
         echo "  const { SoundTouchWasm } = require('./$PKG_DIR/soundtouch.js');"
-        echo "  const st = new SoundTouchWasm(44100, 2);"
+        echo "  const st = new SoundTouchWasm(44100, 2, true, false);"
         ;;
     bundler)
         echo "  In your bundled app:"
         echo "  import { SoundTouchWasm } from './$PKG_DIR/soundtouch.js';"
-        echo "  const st = new SoundTouchWasm(44100, 2);"
+        echo "  const st = new SoundTouchWasm(44100, 2, true, false);"
         ;;
 esac

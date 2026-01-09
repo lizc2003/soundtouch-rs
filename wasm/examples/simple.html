@@ -263,7 +263,8 @@
                 // Create SoundTouch instance
                 soundtouch = new SoundTouchWasm(
                     originalBuffer.sampleRate,
-                    originalBuffer.numberOfChannels
+                    originalBuffer.numberOfChannels,
+                    true, false
                 );
 
                 // Set parameters

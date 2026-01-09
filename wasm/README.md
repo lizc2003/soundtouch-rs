@@ -43,7 +43,7 @@ async function processAudio() {
   await init();
   
   // Create a SoundTouch instance
-  const st = new SoundTouchWasm(44100, 2); // 44.1kHz, stereo
+  const st = new SoundTouchWasm(44100, 2, true, false); // 44.1kHz, stereo
   
   // Set processing parameters
   st.setTempo(1.5);           // 1.5x speed (50% faster)
@@ -77,7 +77,7 @@ async function processAudio() {
 ```javascript
 const { SoundTouchWasm } = require('./pkg-nodejs/soundtouch.js');
 
-const st = new SoundTouchWasm(48000, 2); // 48kHz, stereo
+const st = new SoundTouchWasm(48000, 2, true, false); // 48kHz, stereo
 st.setTempo(0.8); // 0.8x speed (20% slower)
 st.setPitchSemitones(-3); // -3 semitones (minor third down)
 
@@ -101,7 +101,7 @@ class SoundTouchNode extends AudioWorkletProcessor {
   
   async init() {
     await init();
-    this.soundtouch = new SoundTouchWasm(sampleRate, 2);
+    this.soundtouch = new SoundTouchWasm(sampleRate, 2, true, false);
     this.soundtouch.setTempo(1.0);
     this.initialized = true;
   }
@@ -150,7 +150,7 @@ registerProcessor('soundtouch-processor', SoundTouchNode);
 ### Constructor
 
 ```typescript
-new SoundTouchWasm(sampleRate: number, channels: number): SoundTouchWasm
+new SoundTouchWasm(sampleRate: number, channels: number, use_quick_seek: bool, use_aa_filter: bool): SoundTouchWasm
 ```
 
 Creates a new SoundTouch instance.

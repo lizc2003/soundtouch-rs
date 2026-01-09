@@ -42,7 +42,7 @@ function processAudio(inputAudio, tempo, pitchSemitones) {
     console.log(`  Pitch: ${pitchSemitones > 0 ? '+' : ''}${pitchSemitones} semitones`);
     
     // Create SoundTouch instance
-    const st = new SoundTouchWasm(inputAudio.sampleRate, inputAudio.channels);
+    const st = new SoundTouchWasm(inputAudio.sampleRate, inputAudio.channels, true, false);
     
     // Set parameters
     st.setTempo(tempo);
